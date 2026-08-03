@@ -1,0 +1,22 @@
+# Build artifacts
+build/
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.lib
+*.exp
+
+# IDE
+.vs/
+.vscode/
+*.suo
+*.user
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Templates (user-provided)
+templates/*.wav
+templates/*.WAV
