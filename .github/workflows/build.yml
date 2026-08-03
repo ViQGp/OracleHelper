@@ -1,0 +1,75 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6   # ✅ 升级到 v6，Node.js 24 兼容
+
+    - name: Setup MSVC
+      uses: microsoft/setup-msbuild@v3   # ✅ 升级到 v3，Node.js 24 兼容
+
+    - name: List repository structure
+      run: |
+        echo "=== Root ==="
+        dir
+        echo "=== src ==="
+        dir src
+        echo "=== thirdparty/kissfft ==="
+        dir thirdparty\kissfft
+
+    - name: Verify required files
+      run: |
+        if not exist "src\main.cpp" (
+          echo ::error::src\main.cpp NOT FOUND
+          exit /b 1
+        )
+        if not exist "src\kissfft.c" (
+          echo ::error::src\kissfft.c NOT FOUND
+          exit /b 1
+        )
+        if not exist "thirdparty\kissfft\kiss_fft.h" (
+          echo ::error::thirdparty\kissfft\kiss_fft.h NOT FOUND
+          exit /b 1
+        )
+        if not exist "CMakeLists.txt" (
+          echo ::error::CMakeLists.txt NOT FOUND
+          exit /b 1
+        )
+        echo All required files present.
+
+    - name: Configure CMake
+      run: |
+        cmake -B build -G "Visual Studio 17 2022" -A x64 `
+          -DCMAKE_BUILD_TYPE=Release `
+          -Wno-dev `
+          --debug-output
+
+    - name: Build Release
+      run: |
+        cmake --build build --config Release --verbose `
+          > build_log.txt 2>&1
+        type build_log.txt
+        if errorlevel 1 (
+          echo ::error::BUILD FAILED
+          exit /b 1
+        )
+
+    - name: List build output
+      run: |
+        echo "=== build/Release ==="
+        dir build\Release
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v7   # ✅ 升级到 v7，Node.js 24 兼容
+      with:
+        name: OracleHelper-Windows-EXE
+        path: build/Release/OracleHelper.exe
+        if-no-files-found: error
