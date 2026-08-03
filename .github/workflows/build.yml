@@ -1,136 +1,71 @@
-# ============================================================
-# OracleHelper Windows EXE 自动编译工作流
-# 合规提醒：仅限听障玩家无障碍辅助使用，遵守 Bungie 服务条款
-# ============================================================
-name: Build Windows EXE
+steps:
+  # ---------- 步骤1：拉取代码 ----------
+  - name: Checkout repository
+    uses: actions/checkout@v4
 
-on:
-  push:
-    branches: [ "main", "master" ]
-  workflow_dispatch:
+  # ---------- 步骤2：校验必需文件 ----------
+  - name: Verify required files
+    shell: cmd
+    run: |
+      echo Verifying project files...
+      if not exist "src\main.cpp" (
+        echo ::error::❌ 缺失文件：src/main.cpp
+        exit /b 1
+      )
+      if not exist "src\kissfft.c" (
+        echo ::error::❌ 缺失文件：src/kissfft.c
+        exit /b 1
+      )
+      if not exist "thirdparty\kissfft\kiss_fft.h" (
+        echo ::error::❌ 缺失文件：thirdparty/kissfft/kiss_fft.h
+        exit /b 1
+      )
+      if not exist "CMakeLists.txt" (
+        echo ::error::❌ 缺失文件：CMakeLists.txt
+        exit /b 1
+      )
+      echo ✅ 所有必需文件校验通过！
 
-jobs:
-  build:
-    runs-on: windows-latest
-    env:
-      BUILD_TYPE: Release
-      # GitHub Windows Runner 固定预装的VS2022路径（官方文档确认，不会变动）
-      VS_PATH: "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
-      VCVARS_PATH: "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+  # ---------- 步骤3：官方标准初始化 MSVC 环境（核心修复！）----------
+  # 官方 action 会自动调用 vcvars64.bat 并配置好所有环境变量
+  - name: Setup MSVC
+    uses: microsoft/setup-msvc@v2
+    with:
+      msbuild-versions: latest  # 确保使用最新版的 VS Build Tools
 
-    steps:
-    # ---------- 步骤1：拉取仓库代码 ----------
-    - name: Checkout Repository
-      uses: actions/checkout@v6  # Node.js 24 兼容版本
+  # ---------- 步骤4：CMake 配置 ----------
+  - name: Configure CMake
+    shell: cmd
+    run: |
+      echo ========== 开始 CMake 配置 ==========
+      cmake -B build ^
+        -G "Visual Studio 17 2022" ^
+        -A x64 ^
+        -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ^
+        -Wno-author
+      if errorlevel 1 (
+        echo ::error::CMake 配置失败！
+        exit /b 1
+      )
+      echo ✅ CMake 配置成功！
 
-    # ---------- 步骤2：列出仓库结构（排错用） ----------
-    - name: List Repository Structure
-      shell: cmd
-      run: |
-        echo ========== 仓库根目录 ==========
-        dir /b
-        echo ========== src 目录 ==========
-        dir /b src || echo ❌ src 目录不存在！
-        echo ========== thirdparty/kissfft 目录 ==========
-        dir /b thirdparty\kissfft || echo ❌ kissfft 目录不存在！
+  # ---------- 步骤5：编译 Release 版本 ----------
+  - name: Build Release
+    shell: cmd
+    run: |
+      echo ========== 开始编译 ==========
+      cmake --build build ^
+        --config %BUILD_TYPE% ^
+        --parallel
+      if errorlevel 1 (
+        echo ::error::编译失败！
+        exit /b 1
+      )
+      echo ✅ 编译成功！
 
-    # ---------- 步骤3：校验必需文件 ----------
-    - name: Verify Required Files
-      shell: cmd
-      run: |
-        set ERROR_FLAG=0
-        if not exist "src\main.cpp" (
-          echo ::error::❌ 缺失文件：src/main.cpp
-          set ERROR_FLAG=1
-        )
-        if not exist "src\kissfft.c" (
-          echo ::error::❌ 缺失文件：src/kissfft.c
-          set ERROR_FLAG=1
-        )
-        if not exist "thirdparty\kissfft\kiss_fft.h" (
-          echo ::error::❌ 缺失文件：thirdparty/kissfft/kiss_fft.h
-          set ERROR_FLAG=1
-        )
-        if not exist "CMakeLists.txt" (
-          echo ::error::❌ 缺失文件：CMakeLists.txt
-          set ERROR_FLAG=1
-        )
-        if "%ERROR_FLAG%"=="1" (
-          echo ::error::请上传缺失的文件后重试！
-          exit /b 1
-        )
-        echo ✅ 所有必需文件校验通过！
-
-    # ---------- 步骤4：验证并初始化VS2022环境（核心修复点！）----------
-    - name: Initialize MSVC Environment
-      shell: cmd
-      run: |
-        echo ========== 验证VS2022安装路径 ==========
-        if not exist "%VCVARS_PATH%" (
-          echo ::error::❌ VS2022环境未找到！路径：%VCVARS_PATH%
-          echo 请检查GitHub Runner环境是否正常
-          exit /b 1
-        )
-        echo ✅ VS2022环境路径验证通过：%VCVARS_PATH%
-        echo ========== 初始化VS编译环境 ==========
-        call "%VCVARS_PATH%"
-        echo ✅ VS编译环境初始化完成！
-
-    # ---------- 步骤5：验证编译器是否正常 ----------
-    - name: Verify MSVC Compiler
-      shell: cmd
-      run: |
-        echo ========== 验证MSVC编译器 ==========
-        where cl.exe
-        cl.exe /? | findstr "Version"
-        echo ✅ MSVC编译器验证通过！
-
-    # ---------- 步骤6：CMake配置 ----------
-    - name: Configure CMake
-      shell: cmd
-      run: |
-        echo ========== 开始CMake配置 ==========
-        cmake -B build ^
-          -G "Visual Studio 17 2022" ^
-          -A x64 ^
-          -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ^
-          -Wno-author  # 替换废弃的-Wno-dev参数，消除警告
-        if errorlevel 1 (
-          echo ::error::CMake配置失败！请检查CMakeLists.txt
-          exit /b 1
-        )
-        echo ✅ CMake配置成功！
-
-    # ---------- 步骤7：编译Release版本 ----------
-    - name: Build Release
-      shell: cmd
-      run: |
-        echo ========== 开始编译 ==========
-        cmake --build build ^
-          --config %BUILD_TYPE% ^
-          --verbose > build_log.txt 2>&1
-        type build_log.txt
-        if errorlevel 1 (
-          echo ::error::编译失败！查看上方日志定位错误
-          exit /b 1
-        )
-        echo ✅ 编译成功！
-
-    # ---------- 步骤8：列出编译产物 ----------
-    - name: List Build Output
-      shell: cmd
-      run: |
-        echo ========== 编译产物目录 ==========
-        dir /b build\Release
-        if not exist "build\Release\OracleHelper.exe" (
-          echo ::error::❌ OracleHelper.exe 未生成！
-          exit /b 1
-        )
-
-    # ---------- 步骤9：上传编译好的EXE ----------
-    - name: Upload EXE Artifact
-      uses: actions/upload-artifact@v7  # Node.js 24 兼容版本
-      with:
-        name: OracleHelper-Windows-EXE
-        path: build/Release/OracleHelper.exe
-        if-no-files-found: error
+  # ---------- 步骤6：检查并上传产物 ----------
+  - name: Upload Artifact
+    uses: actions/upload-artifact@v4
+    with:
+      name: OracleHelper-Windows-EXE
+      path: build/Release/OracleHelper.exe
