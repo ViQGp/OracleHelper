@@ -1,16 +1,13 @@
 # ============================================================
 # OracleHelper Windows EXE 自动编译工作流
-# 重要提醒：
-# 1. 不要上传 ZIP 压缩包！直接上传解压后的 src/、thirdparty/ 文件夹
-# 2. 仓库根目录必须存在：src/main.cpp、src/kissfft.c、thirdparty/kissfft/kiss_fft.h、CMakeLists.txt
-# 3. 本工具仅限听障玩家无障碍辅助使用，遵守 Bungie 服务条款
+# 合规提醒：仅限听障玩家无障碍辅助使用，遵守 Bungie 服务条款
 # ============================================================
 name: Build Windows EXE
 
 on:
   push:
     branches: [ "main", "master" ]
-  workflow_dispatch:  # 支持手动触发编译
+  workflow_dispatch:
 
 jobs:
   build:
@@ -22,10 +19,8 @@ jobs:
     # ---------- 步骤1：拉取仓库代码 ----------
     - name: Checkout Repository
       uses: actions/checkout@v6  # Node.js 24 兼容版本
-      with:
-        fetch-depth: 0  # 完整拉取代码，避免文件缺失
 
-    # ---------- 步骤2：列出仓库结构（方便排错） ----------
+    # ---------- 步骤2：列出仓库结构（排错用） ----------
     - name: List Repository Structure
       shell: cmd
       run: |
@@ -36,7 +31,7 @@ jobs:
         echo ========== thirdparty/kissfft 目录 ==========
         dir /b thirdparty\kissfft || echo ❌ kissfft 目录不存在！
 
-    # ---------- 步骤3：校验必需文件（核心排错步骤） ----------
+    # ---------- 步骤3：校验必需文件 ----------
     - name: Verify Required Files
       shell: cmd
       run: |
@@ -63,26 +58,38 @@ jobs:
         )
         echo ✅ 所有必需文件校验通过！
 
-    # ---------- 步骤4：配置MSVC编译环境 ----------
-    - name: Setup MSVC
-      uses: microsoft/setup-msbuild@v3  # Node.js 24 兼容版本
+    # ---------- 步骤4：初始化 Visual Studio 2022 开发环境（核心修复点！）----------
+    - name: Setup MSVC Development Environment
+      uses: ilammy/msvc-dev-cmd@v1  # 专门用于在CI中初始化VS环境，比setup-msbuild更适配CMake
+      with:
+        vsversion: 2022  # 显式指定VS版本
+        arch: x64        # 指定64位架构
 
-    # ---------- 步骤5：CMake配置 ----------
+    # ---------- 步骤5：验证编译器是否正常（排错用） ----------
+    - name: Verify MSVC Compiler
+      shell: cmd
+      run: |
+        echo ========== 验证MSVC编译器 ==========
+        where cl.exe  # 查找编译器路径
+        cl.exe        # 输出编译器版本，确认环境正常
+
+    # ---------- 步骤6：CMake配置 ----------
     - name: Configure CMake
       shell: cmd
       run: |
         echo ========== 开始CMake配置 ==========
         cmake -B build ^
-          -G "Visual Studio 17 2022" ^
-          -A x64 ^
+          -G "Visual Studio 17 2022" ^  # 显式指定VS2022生成器
+          -A x64 ^                       # 显式指定64位平台
           -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ^
-          -Wno-dev
+          -Wno-author  # 替换废弃的-Wno-dev参数，消除警告
         if errorlevel 1 (
-          echo ::error::CMake配置失败！
+          echo ::error::CMake配置失败！请检查CMakeLists.txt
           exit /b 1
         )
+        echo ✅ CMake配置成功！
 
-    # ---------- 步骤6：编译Release版本 ----------
+    # ---------- 步骤7：编译Release版本 ----------
     - name: Build Release
       shell: cmd
       run: |
@@ -97,7 +104,7 @@ jobs:
         )
         echo ✅ 编译成功！
 
-    # ---------- 步骤7：列出编译产物 ----------
+    # ---------- 步骤8：列出编译产物 ----------
     - name: List Build Output
       shell: cmd
       run: |
@@ -108,10 +115,10 @@ jobs:
           exit /b 1
         )
 
-    # ---------- 步骤8：上传编译好的EXE ----------
+    # ---------- 步骤9：上传编译好的EXE ----------
     - name: Upload EXE Artifact
       uses: actions/upload-artifact@v7  # Node.js 24 兼容版本
       with:
         name: OracleHelper-Windows-EXE
         path: build/Release/OracleHelper.exe
-        if-no-files-found: error  # 没找到EXE直接报错
+        if-no-files-found: error
